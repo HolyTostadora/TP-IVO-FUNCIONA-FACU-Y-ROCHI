@@ -1,3 +1,5 @@
+#include <WiFi.h>
+#include <WebServer.h>
 #include "DHT.h"
 
 #define DHTPIN 27     // Pin donde está conectado el sensor DHT
@@ -20,8 +22,14 @@ const int botonDecremento = 23;
 float rangoMin = 50;
 float rangoMax = 80;
 
+// Configuración Wi-Fi
+const char* ssid = "TuSSID";          // Cambia esto por tu SSID
+const char* password = "TuPassword";   // Cambia esto por tu contraseña
+
+WebServer server(80); // Servidor web en el puerto 80
+
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   dht.begin();
 
   // Configurar los pines de los LEDs como salida
@@ -34,6 +42,23 @@ void setup() {
   // Configurar los pines de los botones como entrada
   pinMode(botonIncremento, INPUT_PULLUP);
   pinMode(botonDecremento, INPUT_PULLUP);
+
+  // Conectar a Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConectado a Wi-Fi");
+
+  // Imprimir la dirección IP
+  Serial.print("Dirección IP del ESP32: ");
+  Serial.println(WiFi.localIP());
+
+  // Configurar manejador para la raíz "/"
+  server.on("/", handleRoot);
+  server.begin();
+  Serial.println("Servidor web iniciado");
 }
 
 void loop() {
@@ -71,19 +96,21 @@ void loop() {
   // Apagar todos los LEDs antes de encender uno nuevo
   apagarTodosLosLeds();
 
-  // Ajustar los LEDS según los nuevos rangos
+  // Ajustar los LEDs según los nuevos rangos
   if (humidity < rangoMin) {
-    digitalWrite(led1, HIGH);  // Menos de rangoMin enciende el LED 1
+    digitalWrite(led1, HIGH);  
   } else if (humidity >= rangoMin && humidity < (rangoMin + 10)) {
-    digitalWrite(led2, HIGH);  // Entre rangoMin y rangoMin + 10 enciende el LED 2
+    digitalWrite(led2, HIGH);  
   } else if (humidity >= (rangoMin + 10) && humidity < (rangoMin + 20)) {
-    digitalWrite(led3, HIGH);  // Entre rangoMin + 10 y rangoMin + 20 enciende el LED 3
+    digitalWrite(led3, HIGH);  
   } else if (humidity >= (rangoMin + 20) && humidity < rangoMax) {
-    digitalWrite(led4, HIGH);  // Entre rangoMin + 20 y rangoMax enciende el LED 4
+    digitalWrite(led4, HIGH);  
   } else {
-    digitalWrite(led5, HIGH);  // rangoMax o más enciende el LED 5
+    digitalWrite(led5, HIGH);  
   }
 
+  // Manejar las solicitudes del cliente web
+  server.handleClient();
   delay(2000);  // Esperar 2 segundos antes de la próxima lectura
 }
 
@@ -93,4 +120,25 @@ void apagarTodosLosLeds() {
   digitalWrite(led3, LOW);
   digitalWrite(led4, LOW);
   digitalWrite(led5, LOW);
+}
+
+void handleRoot() {
+  float humidity = dht.readHumidity();  // Leer la humedad para mostrar en la página
+
+  String html = "<html>\
+                 <head><title>Estado de los LEDs</title></head>\
+                 <body>\
+                 <h1>Estado de los LEDs basado en la humedad</h1>\
+                 <p>Humedad actual: " + String(humidity) + "%</p>\
+                 <p>Rango Min: " + String(rangoMin) + "% - Rango Max: " + String(rangoMax) + "%</p>\
+                 <p>Estado de los LEDs:</p>\
+                 <ul>";
+  html += "<li>LED 1: " + String(digitalRead(led1) == HIGH ? "Encendido" : "Apagado") + "</li>";
+  html += "<li>LED 2: " + String(digitalRead(led2) == HIGH ? "Encendido" : "Apagado") + "</li>";
+  html += "<li>LED 3: " + String(digitalRead(led3) == HIGH ? "Encendido" : "Apagado") + "</li>";
+  html += "<li>LED 4: " + String(digitalRead(led4) == HIGH ? "Encendido" : "Apagado") + "</li>";
+  html += "<li>LED 5: " + String(digitalRead(led5) == HIGH ? "Encendido" : "Apagado") + "</li>";
+  html += "</ul></body></html>";
+
+  server.send(200, "text/html", html);
 }
